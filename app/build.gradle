@@ -16,6 +16,7 @@ android {
 
     buildFeatures {
         aidl true
+        buildConfig true
     }
 
     buildTypes {
@@ -37,4 +38,5 @@ dependencies {
     def shizukuVersion = "13.1.5"
     implementation "dev.rikka.shizuku:api:$shizukuVersion"
     implementation "dev.rikka.shizuku:provider:$shizukuVersion"
+    implementation "androidx.annotation:annotation:1.7.1"
 }
