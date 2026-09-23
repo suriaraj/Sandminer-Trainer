@@ -7,51 +7,44 @@ Production-oriented vehicle rental and travel booking marketplace.
 ## Repository layout
 
 - `apps/web` — Next.js/React/TypeScript customer web application.
-- `services/api` — FastAPI application, SQLAlchemy models, Alembic migrations, business services and tests.
+- `services/api` — FastAPI, SQLAlchemy, Alembic, business services and tests.
 - `docs` — architecture, gap review, security, database, API, state-machine and readiness documentation.
-- `.github/workflows/ci.yml` — lint/test/build/security-oriented CI foundation.
-- `docker-compose.yml` — local PostgreSQL/PostGIS + Redis + API + web stack.
+- `.github/workflows/ci.yml` — API migration/test and web build CI.
+- `docker-compose.yml` — PostgreSQL/PostGIS + Redis + API + worker + web.
 
 ## Implemented foundation
 
-The first production slice includes:
+- JWT/password authentication foundation and server-side authorization helpers.
+- PostgreSQL/PostGIS transactional schema.
+- Exact-vehicle availability with active-booking and block checks.
+- Database-level PostgreSQL exclusion constraint against overlapping reservations.
+- Immutable quote records with expiry, pricing version and visible line items.
+- Decimal/NUMERIC money handling with explicit currency.
+- Booking state-machine validation and history.
+- Idempotency persistence and replay protection.
+- Audit-event foundation and transactional outbox table.
+- Payment-provider interface with signed sandbox webhooks for development/test only.
+- Production startup guard that rejects the sandbox payment provider.
+- Health/readiness endpoints, request IDs and safe API errors.
+- Mobile-first customer search page backed by the API.
+- Docker, CI, migrations, tests and production-readiness documentation.
 
-- JWT/password authentication foundation and RBAC permission checks.
-- PostgreSQL/PostGIS data model for users, operators, vehicles, immutable quotes, bookings, payments, idempotency keys and audit events.
-- Availability service that considers active bookings and vehicle blocks.
-- Database-level exclusion constraint to reject overlapping bookings for the same vehicle.
-- Immutable quote/pricing calculation using `Decimal`, with explicit currency and line items.
-- Booking state-machine validation.
-- Idempotency records for mutation replay protection.
-- Payment-provider interface plus an explicit development-only sandbox adapter; production refuses the sandbox provider.
-- Signed webhook verification contract and unique provider-event storage model.
-- Health/readiness endpoints, request IDs and consistent API errors.
-- Mobile-first customer search page wired to the API contract.
-- Docker, CI, environment template, migration and documentation foundations.
+## Safety and correctness rules
 
-## Important production rule
-
-No client response, frontend state, or payment return URL is trusted as proof of availability, authorization or payment success. Those facts are verified server-side inside a database transaction or via verified provider webhooks.
+No client response, frontend state, payment return URL, or search result is trusted as proof of availability, authorization or payment success. Those facts are revalidated server-side. Conflicting vehicle bookings are rejected by PostgreSQL even when requests race.
 
 ## Local development
 
-1. Copy `.env.example` to `.env` and replace all development secrets.
+1. Copy `.env.example` to `.env` and replace development secrets.
 2. Run `docker compose up --build`.
-3. API: `http://localhost:8000` and OpenAPI at `/docs`.
-4. Web: `http://localhost:3000`.
-5. Apply migrations in the API container with `alembic upgrade head`.
+3. Apply migrations with `docker compose run --rm api alembic upgrade head`.
+4. API: `http://localhost:8000`; OpenAPI: `/docs`.
+5. Web: `http://localhost:3000`.
 
-## Status
+## Validation
 
-This branch is a production-grade **foundation and first vertical slice**, not a claim that every later module in the master requirements is fully finished. `docs/GAP_REVIEW.md` and `docs/IMPLEMENTATION_ROADMAP.md` explicitly track the remaining production work instead of returning fake success states.
+Backend unit tests cover price arithmetic, state transitions, overlap semantics and webhook signature verification. CI additionally applies the PostgreSQL migration before running the API tests and builds the Next.js application.
 
-## Development seed/admin commands
+## Delivery status
 
-Inside the API container:
-
-```bash
-python -m app.cli seed-dev
-python -m app.cli create-super-admin --email admin@example.test --password 'use-a-long-development-password'
-```
-
-The seed command uses clearly fake operators/vehicles. Never use it as production customer data.
+This branch is a production-grade foundation and first vertical slice, not a false claim that every module in the master specification is already finished. `docs/GAP_REVIEW.md`, `docs/IMPLEMENTATION_ROADMAP.md` and `docs/PRODUCTION_READINESS.md` track what remains. A secure production super-admin bootstrap is intentionally not hardcoded into the repository.

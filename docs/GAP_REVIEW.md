@@ -1,54 +1,55 @@
 # PYRO RENTALS — Gap Review and Fix Plan
 
-The master prompt is strong on breadth. The following gaps were added as explicit engineering rules so the implementation remains safe under concurrency and real operations.
+The master prompt is strong on breadth. The implementation adds explicit engineering rules where concurrency, ownership, reliability and regulated data need stronger boundaries.
 
 ## Gaps fixed in this foundation
 
-1. **Availability race between search and booking** — search is advisory only. Booking creation re-checks availability in a transaction and the database exclusion constraint is the final authority.
-2. **Quote/payment race** — quotes are immutable, have an expiry, a pricing version and line items. A booking references the exact quote that was accepted.
-3. **Mutation replay** — idempotency keys are persisted with request fingerprint and response reference. A repeated key with a different payload is rejected.
-4. **Webhook replay/duplication** — provider event IDs are unique and webhook signatures are verified before state changes.
-5. **Operator data isolation** — RBAC alone is insufficient. Queries are scoped by customer/operator ownership before returning records.
-6. **Money correctness** — all amounts use `NUMERIC`/`Decimal`, explicit currency and separate line items. Floating point is prohibited.
-7. **Auditability** — sensitive state transitions append audit records with actor, action, entity and request ID.
-8. **Outbox boundary** — external notifications/payments must not be sent while a database transaction is half-finished. The architecture reserves a transactional outbox for reliable background delivery.
-9. **Production provider safety** — sandbox adapters are development/test-only and startup validation rejects them in production.
-10. **PII/secrets in logs** — structured logging rules require redaction of tokens, KYC payloads, payment secrets and signed URLs.
+1. **Availability race between search and booking** — search is advisory only. Booking creation rechecks availability and the database exclusion constraint is the final authority.
+2. **Quote/payment race** — quotes are immutable, have expiry, pricing version and line items. A booking references the accepted quote.
+3. **Mutation replay** — idempotency keys persist request fingerprints and completed responses. Reusing a key with another payload is rejected.
+4. **Concurrent idempotency-key use** — the unique database constraint prevents duplicate key ownership; concurrent duplicate work is rejected rather than creating two effects.
+5. **Webhook replay** — provider event IDs are unique and webhook signatures must be verified before state changes.
+6. **Operator/customer isolation** — permissions are not enough; resource queries must be scoped by ownership/tenant.
+7. **Money correctness** — financial values use NUMERIC/Decimal with explicit currency and line items.
+8. **Auditability** — sensitive transitions append audit events with actor, entity and request ID.
+9. **Outbox boundary** — notification/provider work is separated from business transactions by a transactional outbox.
+10. **Production-provider safety** — sandbox providers are development/test-only and are rejected in production.
+11. **PII/secrets in telemetry** — tokens, KYC data, payment secrets and signed URLs must be redacted.
 
-## Master-prompt areas that still need business/legal decisions
+## Requirements that must remain configurable
 
-These are not silently guessed because they affect contracts, taxation, privacy or money movement:
+These affect contracts, tax, privacy or financial liability and must not be guessed:
 
-- Exact KYC documents and verification provider by geography/service.
-- Tax/GST invoicing, TCS/TDS and operator payout treatment.
-- Cancellation percentages, grace periods and no-show rules.
-- Security-deposit authorization vs capture behavior by gateway.
-- Damage approval/dispute thresholds and who may approve deductions.
+- KYC document requirements and verification provider by geography/service.
+- Tax/GST invoicing and operator payout treatment.
+- Cancellation percentages, grace periods and no-show policy.
+- Security-deposit authorization/capture/refund behavior by gateway.
+- Damage approval/dispute thresholds.
 - Operator commission plans and payout cycles.
 - Corporate credit limits and approval hierarchy.
-- Data-retention periods for KYC, invoices, audit and support records.
-- Refund SLA, settlement SLA, RPO/RTO and alert thresholds.
+- Retention periods for KYC, invoices, audit and support data.
+- Refund/settlement SLAs and RPO/RTO.
 
-The implementation stores these as configuration/policy concepts rather than hardcoding business values.
+## Remaining engineering work
 
-## Remaining engineering gaps by phase
+### Inventory and availability
+- Add explicit maintenance and operator-schedule entities rather than representing every closure as a generic block.
+- Materialize configurable pickup/return buffer windows so the database exclusion rule protects buffers as well as the nominal rental interval.
+- Add PostGIS service areas and pickup/drop geospatial queries.
+- Add temporary reservation expiry cleanup for abandoned PAYMENT_PENDING bookings.
 
-### Phase 2
-- Full operator inventory CRUD and document expiry workflow.
-- PostGIS pickup/service-area queries.
-- Configurable pricing rules, holiday calendars and coupon stacking policy.
-- Quote reservation/short hold policy for high-contention inventory.
+### Commerce
+- Complete configurable rules pricing, weekend/holiday/demand rules and coupon policy.
+- Implement real Indian payment gateway adapter, payment initiation, verified callbacks and reconciliation.
+- Implement KYC provider integration and secure document quarantine/scanning.
+- Implement deposit/refund/settlement ledgers with finance approval controls.
 
-### Phase 3
-- Real Indian payment gateway adapter and reconciliation ingestion.
-- KYC provider adapter and secure document quarantine/scanning pipeline.
-- Deposit authorization/capture/refund ledger.
-- Cancellation/refund engine.
+### Fulfilment and operations
+- Driver scheduling, handover, immutable inspection evidence, damage disputes and return-charge computation.
+- Operator/admin CRUD, reports, support, settlement operations, notifications and document expiry workflows.
 
-### Phase 4
-- Driver scheduling, handover, immutable inspection photos, damage disputes.
-- Return charge computation and customer acknowledgement.
-
-### Phase 5+
-- Operator settlement ledger, finance approvals, reports, support, corporate, subscriptions, SEO, i18n and analytics.
-- OpenTelemetry traces, SLO dashboards, load tests, restore drills and production runbooks.
+### Hardening and expansion
+- Refresh-token rotation and device/session revocation.
+- Gateway/API rate limits and brute-force protection.
+- OpenTelemetry traces, SLO dashboards, load tests, backup/restore drills and runbooks.
+- Corporate rentals, subscriptions, travel packages, SEO, i18n and analytics.
