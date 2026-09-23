@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from decimal import Decimal
 from uuid import UUID
 
@@ -27,6 +28,13 @@ class QuoteCreateRequest(BaseModel):
     package_id: UUID
     pickup_at: datetime
     return_at: datetime
+    service_type: Literal[
+        "SELF_DRIVE", "CHAUFFEUR_PACKAGE", "AIRPORT_TRANSFER",
+        "OUTSTATION_ONE_WAY", "OUTSTATION_ROUND_TRIP", "CUSTOM_DURATION"
+    ]
+    pickup_location: str = Field(min_length=2, max_length=500)
+    return_location: str = Field(min_length=2, max_length=500)
+    booking_timezone: str = Field(min_length=3, max_length=64)
     coupon_code: str | None = None
 
     @model_validator(mode="after")

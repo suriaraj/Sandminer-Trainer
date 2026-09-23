@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import select
@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.errors import ConflictError, NotFoundError
 from app.core.security import create_access_token, create_refresh_token, get_current_user, hash_password, verify_password
 from app.models import Booking, PricingPackage, Quote, Role, User, UserRole, Vehicle
+from app.marketplace_models import RentalConfiguration
 from app.schemas import BookingCreateRequest, BookingResponse, LoginRequest, QuoteCreateRequest, QuoteResponse, RegisterRequest, TokenResponse, VehicleSearchItem
 from app.services.audit import append_audit
 from app.services.availability import is_vehicle_available, search_available_vehicles
@@ -72,6 +73,18 @@ def create_quote(payload: QuoteCreateRequest, user: User = Depends(get_current_u
     now = datetime.now(UTC)
     quote = Quote(customer_id=user.id, vehicle_id=vehicle.id, package_id=package.id, pickup_at=payload.pickup_at, return_at=payload.return_at, pricing_version="base-v1", currency=price.currency, subtotal=price.subtotal, tax=price.tax, discount=price.discount, deposit=price.deposit, total=price.total, line_items=price.line_items, expires_at=now + timedelta(minutes=15), created_at=now, updated_at=now)
     db.add(quote)
+    db.flush()
+    db.add(
+        RentalConfiguration(
+            id=uuid4(),
+            quote_id=quote.id,
+            service_type=payload.service_type,
+            pickup_location=payload.pickup_location,
+            return_location=payload.return_location,
+            booking_timezone=payload.booking_timezone,
+            details={},
+        )
+    )
     db.commit()
     db.refresh(quote)
     return QuoteResponse.model_validate(quote, from_attributes=True)

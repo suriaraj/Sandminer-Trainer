@@ -2,7 +2,7 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.config import get_settings
 
@@ -33,7 +33,7 @@ class SandboxPaymentProvider(PaymentProvider):
             raise RuntimeError("Sandbox payments are forbidden in production")
         return PaymentCheckout(
             provider=self.name,
-            external_reference=f"sandbox-{booking_id}",
+            external_reference=f"sandbox-{booking_id}-{uuid4().hex[:12]}",
             status="PENDING",
         )
 

@@ -38,7 +38,6 @@ from app.lifecycle_schemas import (
     SupportTicketResponse,
 )
 from app.models import (
-    Booking,
     BookingStatus,
     Payment,
     PaymentEvent,
@@ -158,6 +157,11 @@ def initiate_payment(
 ) -> PaymentInitiateResponse:
     try:
         booking = get_customer_booking(db, booking_id, user.id)
+        if booking.status != BookingStatus.PAYMENT_PENDING:
+            raise ConflictError(
+                "BOOKING_NOT_PAYMENT_PENDING",
+                "Payment can only be initiated while the booking is payment pending",
+            )
         idem = begin_idempotent(
             db,
             f"payment-initiate:{booking.id}",

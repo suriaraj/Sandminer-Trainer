@@ -62,8 +62,8 @@ ROLE_MAP["SUPER_ADMIN"] = set(PERMISSIONS)
 ROLE_MAP["SYSTEM"] = set(PERMISSIONS)
 
 
-def stable_id(kind: str, code: str) -> str:
-    return str(uuid5(NAMESPACE_URL, f"pyro-rentals:{kind}:{code}"))
+def stable_id(kind: str, code: str):
+    return uuid5(NAMESPACE_URL, f"pyro-rentals:{kind}:{code}")
 
 
 def upgrade() -> None:

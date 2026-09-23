@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import exists, not_, select
 from sqlalchemy.orm import Session
 
+from app.marketplace_models import VehicleReservation
 from app.models import Booking, BookingStatus, Vehicle, VehicleBlock
 
 
@@ -28,6 +29,19 @@ def overlaps(start_a: datetime, end_a: datetime, start_b: datetime, end_b: datet
 
 
 def is_vehicle_available(db: Session, vehicle_id: UUID, pickup_at: datetime, return_at: datetime) -> bool:
+    reservation_conflict = db.scalar(
+        select(
+            exists().where(
+                VehicleReservation.vehicle_id == vehicle_id,
+                VehicleReservation.status == "ACTIVE",
+                VehicleReservation.start_at < return_at,
+                VehicleReservation.end_at > pickup_at,
+            )
+        )
+    )
+    if reservation_conflict:
+        return False
+
     booking_conflict = db.scalar(
         select(
             exists().where(
@@ -59,6 +73,12 @@ def search_available_vehicles(
     pickup_at: datetime,
     return_at: datetime,
 ) -> list[Vehicle]:
+    reservation_conflict = exists().where(
+        VehicleReservation.vehicle_id == Vehicle.id,
+        VehicleReservation.status == "ACTIVE",
+        VehicleReservation.start_at < return_at,
+        VehicleReservation.end_at > pickup_at,
+    )
     booking_conflict = exists().where(
         Booking.vehicle_id == Vehicle.id,
         Booking.status.in_(RESERVING_BOOKING_STATUSES),
@@ -75,6 +95,7 @@ def search_available_vehicles(
         .where(
             Vehicle.city.ilike(city),
             Vehicle.status == "AVAILABLE",
+            not_(reservation_conflict),
             not_(booking_conflict),
             not_(block_conflict),
         )

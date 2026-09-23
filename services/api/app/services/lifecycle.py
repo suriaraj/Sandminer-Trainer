@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError
 from app.lifecycle_models import LedgerEntry, LedgerTransaction
+from app.marketplace_models import VehicleReservation
 from app.models import Booking, BookingStatus, BookingStatusHistory, OperatorUser, User
 from app.services.booking import assert_transition
 
@@ -56,6 +57,20 @@ def transition_booking(
             created_at=datetime.now(UTC),
         )
     )
+    if target in {
+        BookingStatus.CANCELLED,
+        BookingStatus.REJECTED,
+        BookingStatus.NO_SHOW,
+        BookingStatus.COMPLETED,
+        BookingStatus.REFUNDED,
+    }:
+        reservation = db.scalar(
+            select(VehicleReservation).where(
+                VehicleReservation.booking_id == booking.id
+            )
+        )
+        if reservation is not None:
+            reservation.status = "RELEASED"
 
 
 def write_balanced_ledger(

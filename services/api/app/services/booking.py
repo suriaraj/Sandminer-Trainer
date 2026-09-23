@@ -1,11 +1,13 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError
 from app.models import Booking, BookingStatus, BookingStatusHistory, Quote, Vehicle
+from app.marketplace_models import AvailabilityPolicy, RentalConfiguration, VehicleReservation
 from app.services.availability import is_vehicle_available
 
 
@@ -67,6 +69,30 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
     if vehicle is None:
         raise ConflictError("VEHICLE_NOT_AVAILABLE", "Vehicle is not available")
 
+    rental_config = db.scalar(
+        select(RentalConfiguration).where(RentalConfiguration.quote_id == quote.id)
+    )
+    if rental_config is None:
+        raise ConflictError(
+            "RENTAL_CONFIGURATION_MISSING",
+            "Quote rental configuration is missing",
+        )
+
+    policy = db.scalar(
+        select(AvailabilityPolicy).where(
+            AvailabilityPolicy.operator_id == vehicle.operator_id
+        )
+    )
+    if policy is None:
+        policy = db.scalar(
+            select(AvailabilityPolicy).where(AvailabilityPolicy.scope_key == "GLOBAL")
+        )
+    if policy is None:
+        raise ConflictError(
+            "AVAILABILITY_POLICY_MISSING",
+            "Availability buffer policy is not configured",
+        )
+
     booking_id = uuid4()
     booking = Booking(
         id=booking_id,
@@ -85,6 +111,18 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
         updated_at=now,
     )
     db.add(booking)
+    rental_config.booking_id = booking.id
+    db.add(
+        VehicleReservation(
+            id=uuid4(),
+            booking_id=booking.id,
+            vehicle_id=booking.vehicle_id,
+            start_at=booking.pickup_at - timedelta(minutes=policy.pre_buffer_minutes),
+            end_at=booking.return_at + timedelta(minutes=policy.post_buffer_minutes),
+            status="ACTIVE",
+            created_at=now,
+        )
+    )
     db.add(
         BookingStatusHistory(
             booking_id=booking.id,
