@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.errors import ConflictError, NotFoundError
 from app.core.security import create_access_token, create_refresh_token, get_current_user, hash_password, verify_password
-from app.models import Booking, PricingPackage, Quote, User, Vehicle
+from app.models import Booking, PricingPackage, Quote, Role, User, UserRole, Vehicle
 from app.schemas import BookingCreateRequest, BookingResponse, LoginRequest, QuoteCreateRequest, QuoteResponse, RegisterRequest, TokenResponse, VehicleSearchItem
 from app.services.audit import append_audit
 from app.services.availability import is_vehicle_available, search_available_vehicles
@@ -27,6 +27,14 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
     now = datetime.now(UTC)
     user = User(email=email, full_name=payload.full_name.strip(), password_hash=hash_password(payload.password), is_active=True, created_at=now, updated_at=now)
     db.add(user)
+    db.flush()
+    customer_role = db.scalar(select(Role).where(Role.code == "CUSTOMER"))
+    if customer_role is None:
+        raise ConflictError(
+            "RBAC_NOT_INITIALIZED",
+            "Database role seed is missing; apply all migrations before registration",
+        )
+    db.add(UserRole(user_id=user.id, role_id=customer_role.id))
     db.commit()
     return TokenResponse(access_token=create_access_token(user.id), refresh_token=create_refresh_token(user.id))
 

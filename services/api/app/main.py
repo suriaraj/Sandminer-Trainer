@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import router
+from app.lifecycle_api import router as lifecycle_router
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import DomainError, domain_error_handler
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 app.add_exception_handler(DomainError, domain_error_handler)
 app.include_router(router)
+app.include_router(lifecycle_router)
 
 @app.middleware("http")
 async def request_context(request: Request, call_next):
