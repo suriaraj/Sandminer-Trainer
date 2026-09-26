@@ -195,3 +195,25 @@ def admin_review_kyc_document(
     )
     db.commit()
     return DocumentSummary.model_validate(doc, from_attributes=True)
+
+
+@router.get("/admin/kyc/cases")
+def list_admin_kyc_cases(
+    status: Literal["PENDING", "SUBMITTED", "UNDER_REVIEW", "VERIFIED", "REJECTED"] = "SUBMITTED",
+    _: User = Depends(require_permissions("kyc:approve")),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    cases = db.scalars(
+        select(KycCase).where(KycCase.status == status)
+        .order_by(KycCase.created_at.desc()).limit(100)
+    ).all()
+    return [
+        {
+            "id": str(item.id),
+            "service_type": item.service_type,
+            "country_code": item.country_code,
+            "status": item.status,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in cases
+    ]

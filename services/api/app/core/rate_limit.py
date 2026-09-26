@@ -5,12 +5,10 @@ Use a gateway/user-aware policy before public deployment behind trusted proxies.
 import hashlib
 from collections.abc import Awaitable, Callable
 
-import redis.asyncio as redis
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 
-from app.core.config import get_settings
 
 
 RULES: dict[str, tuple[int, int]] = {
@@ -24,7 +22,6 @@ local count = redis.call("INCR", KEYS[1])
 if count == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end
 return count
 """
-_client = redis.from_url(get_settings().redis_url, decode_responses=True)
 
 
 async def limit_sensitive_routes(
@@ -40,7 +37,7 @@ async def limit_sensitive_routes(
     client_digest = hashlib.sha256(client_ip.encode()).hexdigest()[:24]
     key = f"pyro:rate:{request.url.path}:{client_digest}"
     try:
-        count = await _client.eval(_SCRIPT, 1, key, window)
+        count = await request.app.state.redis.eval(_SCRIPT, 1, key, window)
     except RedisError:
         # Silently dropping the limiter on auth routes allows brute force attempts.
         return JSONResponse(

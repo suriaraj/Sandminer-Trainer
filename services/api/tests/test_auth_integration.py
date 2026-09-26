@@ -8,9 +8,14 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+@pytest.fixture
+def client():
+    with TestClient(app) as instance:
+        yield instance
+
+
 @pytest.mark.skipif(os.getenv("APP_ENV") != "test", reason="Requires migrated test PostgreSQL")
-def test_register_login_rotate_logout_all():
-    client = TestClient(app)
+def test_register_login_rotate_logout_all(client: TestClient):
     email = f"session-{uuid4().hex}@example.com"
     password = f"LocalOnly{uuid4().hex}!"
 

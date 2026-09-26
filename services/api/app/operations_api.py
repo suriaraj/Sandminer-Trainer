@@ -428,3 +428,34 @@ def admin_kpis(
         captured_revenue=Decimal(captured_revenue or 0),
         pending_kyc=pending_kyc,
     )
+
+
+@router.get("/admin/operators", response_model=list[OperatorResponse])
+def list_admin_operators(
+    _: User = Depends(require_permissions("operator:approve")),
+    db: Session = Depends(get_db),
+) -> list[OperatorResponse]:
+    operators = db.scalars(
+        select(Operator).order_by(Operator.created_at.desc()).limit(100)
+    ).all()
+    return [
+        OperatorResponse(
+            id=item.id, legal_name=item.legal_name,
+            business_name=item.business_name, status=item.status,
+        )
+        for item in operators
+    ]
+
+
+@router.get("/admin/vehicles", response_model=list[VehicleResponse])
+def list_admin_vehicles(
+    _: User = Depends(require_permissions("operator:approve")),
+    db: Session = Depends(get_db),
+) -> list[VehicleResponse]:
+    vehicles = db.scalars(
+        select(Vehicle).order_by(Vehicle.created_at.desc()).limit(100)
+    ).all()
+    return [
+        VehicleResponse.model_validate(item, from_attributes=True)
+        for item in vehicles
+    ]

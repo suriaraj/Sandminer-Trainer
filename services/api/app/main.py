@@ -1,4 +1,7 @@
 from uuid import uuid4
+from contextlib import asynccontextmanager
+
+import redis.asyncio as redis
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +20,18 @@ from app.kyc_documents_api import router as kyc_documents_router
 from app.operations_api import router as operations_router
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="1.0.0")
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    application.state.redis = redis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        yield
+    finally:
+        await application.state.redis.aclose()
+
+
+app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
