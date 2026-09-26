@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticatedFetch } from "../../../lib/server-api";
+import { sameOriginOrThrow } from "../../../lib/request-security";
 
 export async function POST(request: NextRequest) {
+  try { sameOriginOrThrow(request); }
+  catch { return NextResponse.json({ detail: "Forbidden origin" }, { status: 403 }); }
   const payload = await request.json();
 
   const quoteResponse = await authenticatedFetch("/quotes", {

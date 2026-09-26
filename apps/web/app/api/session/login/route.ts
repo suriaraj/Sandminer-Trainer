@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_INTERNAL_URL } from "../../../../lib/server-api";
+import { cookieSecurity, sameOriginOrThrow } from "../../../../lib/request-security";
 
 export async function POST(request: NextRequest) {
+  try { sameOriginOrThrow(request); }
+  catch { return NextResponse.json({ detail: "Forbidden origin" }, { status: 403 }); }
   const payload = await request.json();
   const response = await fetch(`${API_INTERNAL_URL}/auth/login`, {
     method: "POST",
@@ -20,17 +23,11 @@ export async function POST(request: NextRequest) {
 
   const result = NextResponse.json({ success: true });
   result.cookies.set("pyro_access", body.access_token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
+    ...cookieSecurity(),
     maxAge: 15 * 60
   });
   result.cookies.set("pyro_refresh", body.refresh_token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
+    ...cookieSecurity(),
     maxAge: 14 * 24 * 60 * 60
   });
   return result;

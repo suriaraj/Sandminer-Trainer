@@ -11,6 +11,7 @@ from app.catalog_api import router as catalog_router
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import DomainError, domain_error_handler
+from app.core.rate_limit import limit_sensitive_routes
 from app.lifecycle_api import router as lifecycle_router
 from app.kyc_documents_api import router as kyc_documents_router
 from app.operations_api import router as operations_router
@@ -33,6 +34,7 @@ app.include_router(catalog_router)
 app.include_router(lifecycle_router)
 app.include_router(kyc_documents_router)
 app.include_router(operations_router)
+app.middleware('http')(limit_sensitive_routes)
 
 
 @app.middleware("http")

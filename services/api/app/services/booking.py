@@ -114,6 +114,13 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
         updated_at=now,
     )
     db.add(booking)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        raise ConflictError(
+            "VEHICLE_NOT_AVAILABLE",
+            "The selected vehicle was reserved by another booking",
+        ) from exc
     rental_config.booking_id = booking.id
     db.add(
         VehicleReservation(

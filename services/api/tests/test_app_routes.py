@@ -2,7 +2,7 @@ from app.main import app
 
 
 def test_critical_route_surface_is_registered():
-    paths = {route.path for route in app.routes}
+    paths = {route.path for route in app.routes if hasattr(route, 'path')}
     expected = {
         "/api/v1/auth/register",
         "/api/v1/auth/login",

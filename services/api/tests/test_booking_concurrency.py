@@ -52,12 +52,15 @@ def test_concurrent_exact_vehicle_booking_allows_one_winner():
             tax_rate=Decimal("0.18"), active=True,
             created_at=now, updated_at=now,
         )
-        db.add_all([operator, vehicle, package])
+        db.add(operator)
+        db.flush()
+        db.add_all([vehicle, package])
+        db.flush()
         quote_ids = []
         customer_ids = []
         for _ in range(2):
             user = User(
-                id=uuid4(), email=f"race-{uuid4().hex}@example.test",
+                id=uuid4(), email=f"race-{uuid4().hex}@example.com",
                 password_hash="test-only-no-login", full_name="Test Customer",
                 is_active=True, created_at=now, updated_at=now,
             )
@@ -71,7 +74,10 @@ def test_concurrent_exact_vehicle_booking_allows_one_winner():
                 expires_at=now + timedelta(minutes=30),
                 created_at=now, updated_at=now,
             )
-            db.add_all([user, quote])
+            db.add(user)
+            db.flush()
+            db.add(quote)
+            db.flush()
             db.add(RentalConfiguration(
                 id=uuid4(), quote_id=quote.id, service_type="SELF_DRIVE",
                 pickup_location="Chennai", return_location="Chennai",

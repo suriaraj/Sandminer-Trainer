@@ -11,7 +11,7 @@ from app.main import app
 @pytest.mark.skipif(os.getenv("APP_ENV") != "test", reason="Requires migrated test PostgreSQL")
 def test_register_login_rotate_logout_all():
     client = TestClient(app)
-    email = f"session-{uuid4().hex}@example.test"
+    email = f"session-{uuid4().hex}@example.com"
     password = f"LocalOnly{uuid4().hex}!"
 
     registration = client.post("/api/v1/auth/register", json={

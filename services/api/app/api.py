@@ -259,6 +259,7 @@ def create_quote(
         updated_at=now,
     )
     db.add(quote)
+    db.flush()
     db.add(
         RentalConfiguration(
             id=uuid4(),
