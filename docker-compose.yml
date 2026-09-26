@@ -98,6 +98,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
       API_INTERNAL_URL: http://api:8000/api/v1
+      COOKIE_SECURE: "false" # local HTTP only; production requires secure cookies
     depends_on:
       - api
     ports:
