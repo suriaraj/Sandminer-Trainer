@@ -45,6 +45,10 @@ No client response, frontend state, payment return URL, or search result is trus
 
 Backend unit tests cover price arithmetic, state transitions, overlap semantics and webhook signature verification. CI additionally applies the PostgreSQL migration before running the API tests and builds the Next.js application.
 
+## Current build guide and verification
+
+See [local build and test guide](docs/LOCAL_BUILD.md) and the [implemented-versus-remaining report](docs/IMPLEMENTED_VS_REMAINING.md). The CI pipeline validates the migrations, auth, quote/pricing, concurrency and sandbox webhook flows as well as the web build. This is a development foundation, not an authorized production launch.
+
 ## Delivery status
 
 This branch is a production-grade foundation and first vertical slice, not a false claim that every module in the master specification is already finished. `docs/GAP_REVIEW.md`, `docs/IMPLEMENTATION_ROADMAP.md` and `docs/PRODUCTION_READINESS.md` track what remains. A secure production super-admin bootstrap is intentionally not hardcoded into the repository.

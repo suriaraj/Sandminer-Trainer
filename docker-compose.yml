@@ -26,7 +26,10 @@ services:
       retries: 20
 
   api:
-    build: ./services/api
+    build:
+      context: ./services/api
+      args:
+        INSTALL_DEV: "true"
     env_file: .env
     depends_on:
       postgres:

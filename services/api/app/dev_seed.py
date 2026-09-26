@@ -48,6 +48,7 @@ def seed() -> None:
                     updated_at=now,
                 )
                 db.add(operator)
+                db.flush()
             package_id = demo_id("package", str(operator_index))
             if db.get(PricingPackage, package_id) is None:
                 db.add(PricingPackage(

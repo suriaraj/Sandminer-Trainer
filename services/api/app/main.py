@@ -2,6 +2,7 @@ from uuid import uuid4
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
+from redis.exceptions import RedisError
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -68,10 +69,11 @@ def health() -> dict:
 
 
 @app.get("/ready")
-def ready() -> JSONResponse:
+async def ready() -> JSONResponse:
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+        await app.state.redis.ping()
         return JSONResponse({"status": "ready"})
-    except SQLAlchemyError:
+    except (SQLAlchemyError, RedisError, AttributeError):
         return JSONResponse({"status": "not_ready"}, status_code=503)
