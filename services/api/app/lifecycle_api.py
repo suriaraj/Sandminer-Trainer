@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -83,7 +83,13 @@ def create_kyc_case(
     active = db.scalar(
         select(KycCase).where(
             KycCase.customer_id == user.id,
-            KycCase.status.in_(["PENDING", "SUBMITTED", "UNDER_REVIEW", "VERIFIED"]),
+            KycCase.country_code == payload.country_code.upper(),
+            KycCase.service_type == payload.service_type.upper(),
+            or_(
+                KycCase.status.in_(["PENDING", "SUBMITTED", "UNDER_REVIEW"]),
+                (KycCase.status == "VERIFIED") &
+                (KycCase.expires_at > datetime.now(UTC)),
+            ),
         ).order_by(KycCase.created_at.desc())
     )
     if active is not None:
@@ -136,7 +142,11 @@ def review_kyc(
         ).limit(1))
         if case.status not in {"SUBMITTED", "UNDER_REVIEW"} or evidence is None:
             raise ConflictError("KYC_EVIDENCE_REQUIRED", "Verified service-specific documents are required")
-        if payload.expires_at is None or payload.expires_at <= datetime.now(UTC):
+        if (
+            payload.expires_at is None
+            or payload.expires_at.tzinfo is None
+            or payload.expires_at <= datetime.now(UTC)
+        ):
             raise ConflictError("KYC_EXPIRY_REQUIRED", "KYC approval must have a future expiry")
     before = {"status": case.status, "reason": case.reason}
     case.status = payload.decision

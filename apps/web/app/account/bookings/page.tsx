@@ -23,7 +23,7 @@ export default async function BookingsPage() {
     <main className="portal-page">
       <header className="portal-header">
         <a className="brand dark-brand" href="/">PYRO <span>RENTALS</span></a>
-        <LogoutButton />
+        <div className="portal-actions"><a className="secondary-button" href="/account/kyc">Verify identity</a><a className="secondary-button" href="/operator">Operator</a><LogoutButton /></div>
       </header>
       <section className="portal-panel wide">
         <p className="eyebrow">My rentals</p>
@@ -31,7 +31,7 @@ export default async function BookingsPage() {
         {bookings.length === 0 ? (
           <div className="empty-state">
             <h2>No bookings yet</h2>
-            <p>Search live inventory and choose a package to start a rental.</p>
+            <p>Search live inventory and choose a package to start a rental. KYC approval and actual payment are required for confirmation.</p>
             <a className="primary-link" href="/">Search vehicles</a>
           </div>
         ) : (
