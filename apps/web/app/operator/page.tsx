@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import OperatorRegistration from "../../components/OperatorRegistration";
+import InventoryForms from "../../components/InventoryForms";
 import { authenticatedFetch } from "../../lib/server-api";
 
 type Operator = { id: string; business_name: string; status: string };
@@ -9,6 +10,9 @@ export default async function OperatorPage() {
   const response = await authenticatedFetch("/operator/profile");
   if (response.status === 401) redirect("/login");
   const operators: Operator[] = response.ok ? await response.json() : [];
+  const categoriesResponse = await authenticatedFetch("/vehicle-categories");
+  const categories: { id: string; name: string }[] = categoriesResponse.ok
+    ? await categoriesResponse.json() : [];
   const fleet = operators.length
     ? await authenticatedFetch("/operator/vehicles") : null;
   const vehicles: Vehicle[] = fleet?.ok ? await fleet.json() : [];
@@ -27,7 +31,8 @@ export default async function OperatorPage() {
         <h1>Operator workspace</h1>
         <p className="muted">
           Onboard a fleet and keep rental inventory separate for each operator.
-          Inventory and pricing APIs are available in the documented operator contract.
+          Add vehicles and configure service-specific pricing. Listings remain
+          inactive until administrator approval.
         </p>
         <div className="kyc-grid">
           <OperatorRegistration />
@@ -42,6 +47,7 @@ export default async function OperatorPage() {
               ))}
           </section>
         </div>
+        <InventoryForms operators={operators} categories={categories} />
         <section className="auth-card">
           <h2>Fleet inventory</h2>
           {vehicles.length === 0

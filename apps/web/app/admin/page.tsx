@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { authenticatedFetch } from "../../lib/server-api";
+import AdminApprovals from "../../components/AdminApprovals";
 
 type Kpis = {
   total_users: number;
@@ -60,6 +61,7 @@ export default async function AdminPage() {
             ))}
           </div>
         ) : <p role="alert">Unable to retrieve administrator data.</p>}
+        <AdminApprovals />
       </section>
     </main>
   );
