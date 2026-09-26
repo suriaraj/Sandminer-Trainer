@@ -1,0 +1,28 @@
+{
+  "name": "pyro-rentals-web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.5.3",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "@tanstack/react-query": "5.59.20",
+    "react-hook-form": "7.53.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.4",
+    "@types/react": "19.0.3",
+    "@types/react-dom": "19.0.2",
+    "typescript": "5.6.3",
+    "tailwindcss": "3.4.17",
+    "postcss": "8.4.47",
+    "autoprefixer": "10.4.20"
+  }
+}

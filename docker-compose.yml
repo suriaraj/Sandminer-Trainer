@@ -1,0 +1,109 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: pyro
+      POSTGRES_USER: pyro
+      POSTGRES_PASSWORD: pyro_dev_only
+    ports:
+      - "5432:5432"
+    volumes:
+      - pyro_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pyro -d pyro"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./services/api
+      args:
+        INSTALL_DEV: "true"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./services/api:/app
+
+  worker:
+    build: ./services/api
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=INFO"]
+    volumes:
+      - ./services/api:/app
+
+  scheduler:
+    build: ./services/api
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=INFO", "--schedule", "/tmp/pyro-celerybeat-schedule"]
+    volumes:
+      - ./services/api:/app
+
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minio_dev_only}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-replace-development-minio-secret}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - pyro_s3:/data
+
+  minio-init:
+    image: minio/mc:latest
+    env_file: .env
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      until mc alias set local http://minio:9000 "$STORAGE_ACCESS_KEY" "$STORAGE_SECRET_KEY";
+      do sleep 2; done;
+      mc mb --ignore-existing local/"$STORAGE_BUCKET";
+      mc anonymous set none local/"$STORAGE_BUCKET";
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      API_INTERNAL_URL: http://api:8000/api/v1
+      COOKIE_SECURE: "false" # local HTTP only; production requires secure cookies
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  pyro_pg:
+  pyro_s3:

@@ -1,0 +1,77 @@
+name: PYRO RENTALS CI
+
+on:
+  push:
+    branches: [main, pyro-rentals-production]
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: pyro_test
+          POSTGRES_USER: pyro
+          POSTGRES_PASSWORD: pyro
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pyro -d pyro_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://pyro:pyro@localhost:5432/pyro_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: test-only-jwt-secret-change-me-000000000000
+      JWT_REFRESH_SECRET: test-only-refresh-secret-change-me-0000000
+      PAYMENT_PROVIDER: sandbox
+      PAYMENT_SECRET: test-webhook-secret
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[dev]'
+      - run: ruff check app tests
+      - run: alembic upgrade head
+      - run: pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npm run build
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Build API and Web Docker images
+        run: docker compose build api web

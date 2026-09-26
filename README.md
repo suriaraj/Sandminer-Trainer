@@ -1,56 +1,54 @@
-# Sandminer Trainer
+# PYRO RENTALS
 
-Android save editor for **Sand Miner: Idle Mining Game** (`com.hcph.sandexplore`).
+Production-oriented vehicle rental and travel booking marketplace.
 
-Validated save layout: **Sand Miner 3.6.1**.
+> PYRO RENTALS is an inventory-rental marketplace, not a ride-hailing clone. The core invariant is whether an exact vehicle can be rented for an exact period under an exact rental configuration.
 
-## What it edits
+## Repository layout
 
-Only this file is opened for editing:
+- `apps/web` — Next.js/React/TypeScript customer web application.
+- `services/api` — FastAPI, SQLAlchemy, Alembic, business services and tests.
+- `docs` — architecture, gap review, security, database, API, state-machine and readiness documentation.
+- `.github/workflows/ci.yml` — API migration/test and web build CI.
+- `docker-compose.yml` — PostgreSQL/PostGIS + Redis + API + worker + web.
 
-`/sdcard/Android/data/com.hcph.sandexplore/files/save.dat`
+## Implemented foundation
 
-Validated fields:
+- JWT/password authentication foundation and server-side authorization helpers.
+- PostgreSQL/PostGIS transactional schema.
+- Exact-vehicle availability with active-booking and block checks.
+- Database-level PostgreSQL exclusion constraint against overlapping reservations.
+- Immutable quote records with expiry, pricing version and visible line items.
+- Decimal/NUMERIC money handling with explicit currency.
+- Booking state-machine validation and history.
+- Idempotency persistence and replay protection.
+- Audit-event foundation and transactional outbox table.
+- Payment-provider interface with signed sandbox webhooks for development/test only.
+- Production startup guard that rejects the sandbox payment provider.
+- Health/readiness endpoints, request IDs and safe API errors.
+- Mobile-first customer search page backed by the API.
+- Docker, CI, migrations, tests and production-readiness documentation.
 
-- Money: Int32 little-endian at decimal offset **3030** (`0xBD6`)
-- Gems: Int32 little-endian at decimal offset **3047** (`0xBE7`)
+## Safety and correctness rules
 
-## Level safety
+No client response, frontend state, payment return URL, or search result is trusted as proof of availability, authorization or payment success. Those facts are revalidated server-side. Conflicting vehicle bookings are rejected by PostgreSQL even when requests race.
 
-`level_save_1.dat` is intentionally not referenced by the save service. The trainer does not read, write, rename, copy, restore, or delete the level save.
+## Local development
 
-Before each edit the current `save.dat` is copied to:
+1. Copy `.env.example` to `.env` and replace development secrets.
+2. Run `docker compose up --build`.
+3. Apply migrations with `docker compose run --rm api alembic upgrade head`.
+4. API: `http://localhost:8000`; OpenAPI: `/docs`.
+5. Web: `http://localhost:3000`.
 
-`/sdcard/Download/SandminerTrainerBackups/`
+## Validation
 
-The Restore button restores only the trainer's most recent `save.dat` backup.
+Backend unit tests cover price arithmetic, state transitions, overlap semantics and webhook signature verification. CI additionally applies the PostgreSQL migration before running the API tests and builds the Next.js application.
 
-The app refuses to edit:
+## Current build guide and verification
 
-- an unsupported Sand Miner version;
-- a missing or unexpectedly small/large save;
-- a save whose validated structure bytes do not match the known 3.6.1 layout;
-- negative/out-of-range values.
+See [local build and test guide](docs/LOCAL_BUILD.md) and the [implemented-versus-remaining report](docs/IMPLEMENTED_VS_REMAINING.md). The CI pipeline validates the migrations, auth, quote/pricing, concurrency and sandbox webhook flows as well as the web build. This is a development foundation, not an authorized production launch.
 
-## Shizuku
+## Delivery status
 
-This build uses the official Shizuku API. On a non-rooted phone:
-
-1. Install Shizuku.
-2. Start Shizuku using Wireless debugging (Android 11+) or ADB.
-3. Open Sandminer Trainer.
-4. Grant the Shizuku permission requested by the trainer.
-5. Tap **Refresh**.
-6. Enter Money / Gems and tap **Apply safely**.
-
-Shizuku may need to be started again after the phone reboots.
-
-## Build
-
-GitHub Actions builds the debug APK on pushes to `main`.
-
-Open **Actions → Build Android APK**, then download the `Sandminer-Trainer` artifact.
-
-## Notes
-
-This project is intended for local save editing of the user's own game data. It does not alter server-side data or purchase validation.
+This branch is a production-grade foundation and first vertical slice, not a false claim that every module in the master specification is already finished. `docs/GAP_REVIEW.md`, `docs/IMPLEMENTATION_ROADMAP.md` and `docs/PRODUCTION_READINESS.md` track what remains. A secure production super-admin bootstrap is intentionally not hardcoded into the repository.
