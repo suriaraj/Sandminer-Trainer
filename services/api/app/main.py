@@ -7,10 +7,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import router
-from app.lifecycle_api import router as lifecycle_router
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import DomainError, domain_error_handler
+from app.lifecycle_api import router as lifecycle_router
+from app.operations_api import router as operations_router
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="1.0.0")
@@ -19,11 +20,19 @@ app.add_middleware(
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID", "X-Device-Label"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "X-Request-ID",
+        "X-Device-Label",
+    ],
 )
 app.add_exception_handler(DomainError, domain_error_handler)
 app.include_router(router)
 app.include_router(lifecycle_router)
+app.include_router(operations_router)
+
 
 @app.middleware("http")
 async def request_context(request: Request, call_next):
@@ -35,9 +44,11 @@ async def request_context(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
 
 @app.get("/ready")
 def ready() -> JSONResponse:

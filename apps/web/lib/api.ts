@@ -9,7 +9,21 @@ export type VehicleSearchItem = {
   seats?: number | null;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+export type PricingPackage = {
+  id: string;
+  operator_id: string;
+  name: string;
+  duration_minutes: number;
+  included_km: string;
+  base_price: string;
+  tax_rate: string;
+  deposit: string;
+  currency: string;
+  active: boolean;
+};
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
 export async function searchVehicles(params: {
   city: string;
@@ -21,11 +35,26 @@ export async function searchVehicles(params: {
     pickup_at: params.pickupAt,
     return_at: params.returnAt
   });
-  const response = await fetch(`${API_URL}/vehicles/search?${query.toString()}`, {
+  const response = await fetch(
+    `${API_URL}/vehicles/search?${query.toString()}`,
+    { cache: "no-store" }
+  );
+  if (!response.ok) {
+    throw new Error(
+      "Could not search vehicles. Please review the dates and try again."
+    );
+  }
+  return response.json();
+}
+
+export async function getVehiclePackages(
+  vehicleId: string
+): Promise<PricingPackage[]> {
+  const response = await fetch(`${API_URL}/vehicles/${vehicleId}/packages`, {
     cache: "no-store"
   });
   if (!response.ok) {
-    throw new Error("Could not search vehicles. Please review the dates and try again.");
+    throw new Error("Rental packages are not available for this vehicle.");
   }
   return response.json();
 }
