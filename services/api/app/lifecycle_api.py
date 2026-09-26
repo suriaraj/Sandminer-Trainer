@@ -301,39 +301,123 @@ async def sandbox_payment_webhook(
         raise HTTPException(status_code=404, detail="Webhook provider not enabled")
     if not provider.verify_webhook(raw, signature):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
-    if db.scalar(
-        select(PaymentEvent.id).where(
-            PaymentEvent.provider == provider.name,
-            PaymentEvent.provider_event_id == event.event_id,
-        )
-    ):
-        return {"success": True, "duplicate": True}
 
-    payment = db.scalar(
-        select(Payment).where(
-            Payment.provider == provider.name,
-            Payment.provider_transaction_id == event.transaction_id,
-        )
-    )
-    if payment is None:
-        raise NotFoundError("Payment transaction not found")
-
-    allowed = {
-        "PENDING": PaymentStatus.PENDING,
-        "AUTHORIZED": PaymentStatus.AUTHORIZED,
-        "CAPTURED": PaymentStatus.CAPTURED,
-        "FAILED": PaymentStatus.FAILED,
-    }
-    payment.status = allowed[event.status]
-    payment.updated_at = datetime.now(UTC)
-    db.add(
-        PaymentEvent(
+    digest = hashlib.sha256(raw).hexdigest()
+    event_id = db.scalar(
+        insert(PaymentEvent)
+        .values(
             id=uuid4(),
             provider=provider.name,
             provider_event_id=event.event_id,
-            payload_hash=hashlib.sha256(raw).hexdigest(),
+            payload_hash=digest,
             created_at=datetime.now(UTC),
         )
+        .on_conflict_do_nothing(index_elements=["provider", "provider_event_id"])
+        .returning(PaymentEvent.id)
+    )
+    if event_id is None:
+        original_hash = db.scalar(select(PaymentEvent.payload_hash).where(
+            PaymentEvent.provider == provider.name,
+            PaymentEvent.provider_event_id == event.event_id,
+        ))
+        if original_hash != digest:
+            raise ConflictError(
+                "WEBHOOK_EVENT_CONFLICT",
+                "An event ID cannot be reused with different content",
+            )
+        return {"success": True, "duplicate": True}
+
+    payment_ref = db.scalar(select(Payment).where(
+        Payment.provider == provider.name,
+        Payment.provider_transaction_id == event.transaction_id,
+    ))
+    if payment_ref is None:
+        raise NotFoundError("Payment transaction not found")
+
+    # Same lock order as booking expiry: booking then payment.
+    booking = db.scalar(select(Booking).where(
+        Booking.id == payment_ref.booking_id
+    ).with_for_update())
+    if booking is None:
+        raise NotFoundError("Booking not found for payment")
+    payment = db.scalar(select(Payment).where(
+        Payment.id == payment_ref.id
+    ).with_for_update())
+
+    allowed_statuses = {
+        PaymentStatus.INITIATED: {"PENDING", "AUTHORIZED", "CAPTURED", "FAILED"},
+        PaymentStatus.PENDING: {"PENDING", "AUTHORIZED", "CAPTURED", "FAILED"},
+        PaymentStatus.AUTHORIZED: {"AUTHORIZED", "CAPTURED", "FAILED"},
+        PaymentStatus.CAPTURED: {"CAPTURED"},
+        PaymentStatus.FAILED: {"FAILED"},
+    }
+    if event.status not in allowed_statuses.get(payment.status, set()):
+        raise ConflictError(
+            "PAYMENT_STATUS_REGRESSION",
+            "The provider event conflicts with the recorded payment state",
+        )
+    payment.status = PaymentStatus(event.status)
+    payment.updated_at = datetime.now(UTC)
+
+    if event.status == "CAPTURED" and booking.status == BookingStatus.PAYMENT_PENDING:
+        now = datetime.now(UTC)
+        deadline_passed = (
+            booking.payment_deadline_at is not None
+            and booking.payment_deadline_at <= now
+        )
+        if deadline_passed:
+            transition_booking(
+                db, booking, BookingStatus.CANCELLED,
+                None, getattr(request.state, "request_id", None),
+            )
+            topic = "payment.late_capture_reconciliation_required"
+        else:
+            rental = db.scalar(select(RentalConfiguration).where(
+                RentalConfiguration.quote_id == booking.quote_id,
+            ))
+            verified = None
+            if rental is not None:
+                verified = db.scalar(select(KycCase).where(
+                    KycCase.customer_id == booking.customer_id,
+                    KycCase.service_type == rental.service_type,
+                    KycCase.status == "VERIFIED",
+                    KycCase.expires_at > now,
+                ).order_by(KycCase.updated_at.desc()).limit(1))
+            target = (
+                BookingStatus.CONFIRMED if verified is not None
+                else BookingStatus.KYC_PENDING
+            )
+            transition_booking(
+                db, booking, target,
+                None, getattr(request.state, "request_id", None),
+            )
+            topic = (
+                "booking.confirmed" if target == BookingStatus.CONFIRMED
+                else "booking.kyc_required"
+            )
+        db.add(OutboxEvent(
+            id=uuid4(),
+            topic=topic,
+            aggregate_id=str(booking.id),
+            payload={"booking_id": str(booking.id), "payment_id": str(payment.id)},
+            created_at=now,
+        ))
+    elif event.status == "CAPTURED" and booking.status in {
+        BookingStatus.CANCELLED, BookingStatus.REJECTED, BookingStatus.NO_SHOW,
+    }:
+        db.add(OutboxEvent(
+            id=uuid4(),
+            topic="payment.late_capture_reconciliation_required",
+            aggregate_id=str(booking.id),
+            payload={"booking_id": str(booking.id), "payment_id": str(payment.id)},
+            created_at=datetime.now(UTC),
+        ))
+
+    append_audit(
+        db, actor_user_id=None, action="payment:webhook", entity="payment",
+        entity_id=str(payment.id),
+        request_id=getattr(request.state, "request_id", None),
+        after_state={"status": payment.status.value, "booking_id": str(booking.id)},
     )
     db.commit()
     return {"success": True, "duplicate": False}

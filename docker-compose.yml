@@ -63,8 +63,35 @@ services:
     volumes:
       - ./services/api:/app
 
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minio_dev_only}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-replace-development-minio-secret}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - pyro_s3:/data
+
+  minio-init:
+    image: minio/mc:latest
+    env_file: .env
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      until mc alias set local http://minio:9000 "$STORAGE_ACCESS_KEY" "$STORAGE_SECRET_KEY";
+      do sleep 2; done;
+      mc mb --ignore-existing local/"$STORAGE_BUCKET";
+      mc anonymous set none local/"$STORAGE_BUCKET";
+
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
       API_INTERNAL_URL: http://api:8000/api/v1
@@ -72,9 +99,7 @@ services:
       - api
     ports:
       - "3000:3000"
-    volumes:
-      - ./apps/web:/app
-      - /app/node_modules
 
 volumes:
   pyro_pg:
+  pyro_s3:
