@@ -1,5 +1,8 @@
 """Integration coverage for service-specific multi-unit pricing and quote persistence."""
 import os
+import hashlib
+import hmac
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
@@ -9,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
+from app.core.config import get_settings
 from app.main import app
 from app.models import Operator, PricingPackage, Vehicle, VehicleCategory
 
@@ -76,3 +80,60 @@ def test_two_day_quote_prices_two_package_units():
         request_body["return_at"] = (pickup + timedelta(hours=36)).isoformat()
         mismatch = client.post("/api/v1/quotes", headers=headers, json=request_body)
         assert mismatch.status_code == 409
+
+        booking_key = "booking-" + uuid4().hex
+        booked = client.post(
+            "/api/v1/bookings",
+            headers={**headers, "Idempotency-Key": booking_key},
+            json={"quote_id": data["id"]},
+        )
+        assert booked.status_code == 201, booked.text
+        booking_id = booked.json()["id"]
+        repeated = client.post(
+            "/api/v1/bookings",
+            headers={**headers, "Idempotency-Key": booking_key},
+            json={"quote_id": data["id"]},
+        )
+        assert repeated.status_code == 201
+        assert repeated.json()["id"] == booking_id
+
+        started = client.post(
+            f"/api/v1/bookings/{booking_id}/payments",
+            headers={**headers, "Idempotency-Key": "pay-" + uuid4().hex},
+        )
+        assert started.status_code == 201, started.text
+        assert started.json()["status"] == "PENDING"
+
+        event = {
+            "event_id": uuid4().hex,
+            "transaction_id": started.json()["provider_reference"],
+            "status": "CAPTURED",
+        }
+        raw = json.dumps(event, separators=(",", ":")).encode()
+        signature = hmac.new(
+            get_settings().payment_secret.encode(), raw, hashlib.sha256
+        ).hexdigest()
+        callback = client.post(
+            "/api/v1/payments/webhooks/sandbox",
+            content=raw,
+            headers={
+                "Content-Type": "application/json",
+                "X-Payment-Signature": signature,
+            },
+        )
+        assert callback.status_code == 200, callback.text
+        assert callback.json() == {"success": True, "duplicate": False}
+        duplicate = client.post(
+            "/api/v1/payments/webhooks/sandbox",
+            content=raw,
+            headers={
+                "Content-Type": "application/json",
+                "X-Payment-Signature": signature,
+            },
+        )
+        assert duplicate.status_code == 200
+        assert duplicate.json()["duplicate"] is True
+        booking_after = client.get(
+            f"/api/v1/bookings/{booking_id}", headers=headers
+        )
+        assert booking_after.json()["status"] == "KYC_PENDING"
