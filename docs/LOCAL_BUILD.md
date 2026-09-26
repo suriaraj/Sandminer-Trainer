@@ -70,7 +70,9 @@ audited operations procedure.
    authorized reviewer approves service-specific KYC evidence.
 8. In My KYC, submit the appropriate document using a direct signed private
    upload and confirm after upload. The reviewer verifies the document and
-   records an expiry before final case approval.
+   records an expiry before final case approval. An outstanding deposit also
+   blocks final booking confirmation; this build does not simulate deposit
+   collection or falsely confirm rentals while deposit authorization is missing.
 
 The production payment processor, malware-scanning path, deposit capture,
 regulated operator/vehicle document checks and full refund/settlement workflows

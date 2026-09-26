@@ -15,6 +15,7 @@ policy approval. A passing build is NOT production approval.
 | Booking | Idempotent creation, status-history records, row lock and two database exclusion constraints | Concurrency integration test |
 | Unpaid hold expiry | Configurable deadline, scheduled Redis-backed Celery worker, reservation release | Expiry/reconciliation soak tests |
 | Payment | Sandbox order initiation and HMAC-validated, deduplicated sandbox capture callbacks | Real Indian gateway missing |
+| Deposits | Fail-closed confirmation gate: an outstanding deposit prevents confirming a rental even after payment and KYC | Actual provider capture/refund/ledger reconciliation must be built |
 | KYC | Service-specific case, private presigned S3-compatible upload, signature/hash checks and reviewer gate | Malware scan/retention/provider missing |
 | Operator | Self-registration, tenant-scoped vehicle/package APIs, own booking lists, availability-policy API | Operator business verification pending |
 | Admin | RBAC-controlled KPIs, operator/vehicle status APIs, KYC evidence-review APIs | Financial/admin approval flows incomplete |
@@ -30,7 +31,9 @@ notifications, inspection evidence and advanced KYC rules have storage or
 partial service APIs; do not mistake model availability for operational
 completeness. OpenAPI must be checked against the implementation in this
 branch. No production payments or KYC claims should be made based on sandbox
-or development data.
+or development data. Until actual deposit capture/authorization is integrated,
+bookings requiring a deposit intentionally cannot be confirmed. Sandbox
+payment success alone is never sufficient.
 
 ## Critical remaining release blockers
 

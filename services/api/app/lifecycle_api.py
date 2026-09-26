@@ -51,6 +51,7 @@ from app.models import (
 from app.providers.payment import payment_provider
 from app.services.audit import append_audit
 from app.services.idempotency import begin_idempotent
+from app.services.deposits import deposit_cleared
 from app.marketplace_models import RentalConfiguration
 from app.services.lifecycle import (
     get_customer_booking,
@@ -180,13 +181,20 @@ def review_kyc(
                 Payment.booking_id == booking.id,
                 Payment.status == PaymentStatus.CAPTURED,
             ).limit(1))
-            if captured is not None:
+            if captured is not None and deposit_cleared(db, booking):
                 transition_booking(
                     db, booking, BookingStatus.CONFIRMED, reviewer.id,
                     getattr(request.state, "request_id", None),
                 )
                 db.add(OutboxEvent(
                     id=uuid4(), topic="booking.confirmed",
+                    aggregate_id=str(booking.id),
+                    payload={"booking_id": str(booking.id)},
+                    created_at=datetime.now(UTC),
+                ))
+            elif captured is not None:
+                db.add(OutboxEvent(
+                    id=uuid4(), topic="booking.deposit_required",
                     aggregate_id=str(booking.id),
                     payload={"booking_id": str(booking.id)},
                     created_at=datetime.now(UTC),
@@ -394,7 +402,8 @@ async def sandbox_payment_webhook(
                     KycCase.expires_at > now,
                 ).order_by(KycCase.updated_at.desc()).limit(1))
             target = (
-                BookingStatus.CONFIRMED if verified is not None
+                BookingStatus.CONFIRMED
+                if verified is not None and deposit_cleared(db, booking)
                 else BookingStatus.KYC_PENDING
             )
             transition_booking(
@@ -403,7 +412,8 @@ async def sandbox_payment_webhook(
             )
             topic = (
                 "booking.confirmed" if target == BookingStatus.CONFIRMED
-                else "booking.kyc_required"
+                else ("booking.deposit_required" if verified is not None
+                      else "booking.kyc_required")
             )
         db.add(OutboxEvent(
             id=uuid4(),
