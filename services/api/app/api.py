@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.errors import ConflictError, NotFoundError
 from app.core.security import get_current_user, hash_password, verify_password
 from app.marketplace_models import RentalConfiguration
-from app.models import Booking, PricingPackage, Quote, Role, User, UserRole, Vehicle
+from app.models import Booking, Operator, PricingPackage, Quote, Role, User, UserRole, Vehicle
 from app.schemas import (
     BookingCreateRequest,
     BookingResponse,
@@ -193,11 +193,25 @@ def create_quote(
         raise NotFoundError("Rental package not found")
     if vehicle is None or vehicle.status != "AVAILABLE":
         raise ConflictError("VEHICLE_NOT_AVAILABLE", "Vehicle is not available")
-    if package.operator_id != vehicle.operator_id:
+    if package.operator_id != vehicle.operator_id or package.service_type != payload.service_type:
         raise ConflictError(
             "PACKAGE_VEHICLE_MISMATCH",
-            "Package is not valid for this vehicle",
+            "Package is not valid for this vehicle and service",
         )
+    operator = db.get(Operator, vehicle.operator_id)
+    if operator is None or operator.status != "ACTIVE":
+        raise ConflictError("OPERATOR_NOT_ACTIVE", "This vehicle is not available for booking")
+    now = datetime.now(UTC)
+    if payload.pickup_at <= now:
+        raise ConflictError("INVALID_RENTAL_WINDOW", "Pickup must be in the future")
+    duration_seconds = int((payload.return_at - payload.pickup_at).total_seconds())
+    package_seconds = package.duration_minutes * 60
+    if package_seconds <= 0 or duration_seconds < package_seconds or duration_seconds % package_seconds:
+        raise ConflictError(
+            "PACKAGE_DURATION_MISMATCH",
+            "Rental duration must be a whole number of selected package units",
+        )
+    units = duration_seconds // package_seconds
     if not is_vehicle_available(
         db,
         vehicle.id,
@@ -215,13 +229,16 @@ def create_quote(
         )
 
     price = build_price(
-        base_price=package.base_price,
+        base_price=package.base_price * units,
         deposit=package.deposit,
         tax_rate=package.tax_rate,
         discount=Decimal("0"),
         currency=package.currency,
     )
-    now = datetime.now(UTC)
+    quote_items = dict(price.line_items)
+    quote_items["package_units"] = units
+    quote_items["package_unit_minutes"] = package.duration_minutes
+    quote_items["service_type"] = payload.service_type
     quote = Quote(
         id=uuid4(),
         customer_id=user.id,
@@ -229,14 +246,14 @@ def create_quote(
         package_id=package.id,
         pickup_at=payload.pickup_at,
         return_at=payload.return_at,
-        pricing_version="base-v1",
+        pricing_version="fixed-package-v1",
         currency=price.currency,
         subtotal=price.subtotal,
         tax=price.tax,
         discount=price.discount,
         deposit=price.deposit,
         total=price.total,
-        line_items=price.line_items,
+        line_items=quote_items,
         expires_at=now + timedelta(minutes=15),
         created_at=now,
         updated_at=now,

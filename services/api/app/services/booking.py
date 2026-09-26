@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError
+from app.core.config import get_settings
 from app.models import Booking, BookingStatus, BookingStatusHistory, Quote, Vehicle
 from app.marketplace_models import AvailabilityPolicy, RentalConfiguration, VehicleReservation
 from app.services.availability import is_vehicle_available
@@ -62,12 +63,12 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
         raise ConflictError("QUOTE_OWNER_MISMATCH", "Quote does not belong to this customer")
     if quote.expires_at <= now:
         raise ConflictError("QUOTE_EXPIRED", "The quote has expired")
+    # Serialize competing writes on the exact inventory item before checking availability.
+    vehicle = db.get(Vehicle, quote.vehicle_id, with_for_update=True)
+    if vehicle is None or vehicle.status != "AVAILABLE":
+        raise ConflictError("VEHICLE_NOT_AVAILABLE", "Vehicle is not available")
     if not is_vehicle_available(db, quote.vehicle_id, quote.pickup_at, quote.return_at):
         raise ConflictError("VEHICLE_NOT_AVAILABLE", "The selected vehicle is no longer available")
-
-    vehicle = db.get(Vehicle, quote.vehicle_id)
-    if vehicle is None:
-        raise ConflictError("VEHICLE_NOT_AVAILABLE", "Vehicle is not available")
 
     rental_config = db.scalar(
         select(RentalConfiguration).where(RentalConfiguration.quote_id == quote.id)
@@ -94,6 +95,7 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
         )
 
     booking_id = uuid4()
+    deadline = now + timedelta(minutes=get_settings().booking_hold_minutes)
     booking = Booking(
         id=booking_id,
         booking_number=_booking_number(now, booking_id),
@@ -104,6 +106,7 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
         pickup_at=quote.pickup_at,
         return_at=quote.return_at,
         status=BookingStatus.PAYMENT_PENDING,
+        payment_deadline_at=deadline,
         currency=quote.currency,
         total_amount=quote.total,
         deposit_amount=quote.deposit,
@@ -120,6 +123,7 @@ def create_booking_from_quote(db: Session, quote: Quote, customer_id: UUID) -> B
             start_at=booking.pickup_at - timedelta(minutes=policy.pre_buffer_minutes),
             end_at=booking.return_at + timedelta(minutes=policy.post_buffer_minutes),
             status="ACTIVE",
+            expires_at=deadline,
             created_at=now,
         )
     )

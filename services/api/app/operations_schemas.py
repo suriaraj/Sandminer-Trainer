@@ -57,6 +57,7 @@ class VehicleStatusRequest(BaseModel):
 class PricingPackageCreateRequest(BaseModel):
     operator_id: UUID
     name: str = Field(min_length=2, max_length=160)
+    service_type: Literal["SELF_DRIVE", "CHAUFFEUR_PACKAGE", "AIRPORT_TRANSFER", "OUTSTATION_ONE_WAY", "OUTSTATION_ROUND_TRIP", "CUSTOM_DURATION"]
     duration_minutes: int = Field(gt=0)
     included_km: Decimal = Field(ge=0)
     base_price: Decimal = Field(ge=0)
@@ -69,6 +70,7 @@ class PricingPackageResponse(BaseModel):
     id: UUID
     operator_id: UUID
     name: str
+    service_type: str
     duration_minutes: int
     included_km: Decimal
     base_price: Decimal

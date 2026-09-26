@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import router
+from app.catalog_api import router as catalog_router
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.errors import DomainError, domain_error_handler
@@ -21,15 +22,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
-        "Authorization",
-        "Content-Type",
-        "Idempotency-Key",
-        "X-Request-ID",
-        "X-Device-Label",
+        "Authorization", "Content-Type", "Idempotency-Key",
+        "X-Request-ID", "X-Device-Label",
     ],
 )
 app.add_exception_handler(DomainError, domain_error_handler)
 app.include_router(router)
+app.include_router(catalog_router)
 app.include_router(lifecycle_router)
 app.include_router(operations_router)
 

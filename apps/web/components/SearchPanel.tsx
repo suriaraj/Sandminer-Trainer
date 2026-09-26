@@ -66,7 +66,7 @@ export default function SearchPanel() {
     setPackageBusy(true);
     setMessage("");
     try {
-      setPackages(await getVehiclePackages(vehicle.id));
+      setPackages(await getVehiclePackages(vehicle.id, serviceType));
     } catch (error) {
       setPackages([]);
       setMessage(

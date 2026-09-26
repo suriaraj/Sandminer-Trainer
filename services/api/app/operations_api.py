@@ -221,6 +221,7 @@ def create_pricing_package(
         id=uuid4(),
         operator_id=payload.operator_id,
         name=payload.name,
+        service_type=payload.service_type,
         duration_minutes=payload.duration_minutes,
         included_km=payload.included_km,
         base_price=payload.base_price,
@@ -242,6 +243,7 @@ def create_pricing_package(
 )
 def list_vehicle_packages(
     vehicle_id: UUID,
+    service_type: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[PricingPackageResponse]:
     vehicle = db.get(Vehicle, vehicle_id)
@@ -251,6 +253,7 @@ def list_vehicle_packages(
         select(PricingPackage).where(
             PricingPackage.operator_id == vehicle.operator_id,
             PricingPackage.active.is_(True),
+            (PricingPackage.service_type == service_type) if service_type else True,
         )
     ).all()
     return [

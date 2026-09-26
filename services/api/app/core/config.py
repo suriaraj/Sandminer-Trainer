@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     jwt_refresh_secret: str = Field(min_length=32)
     access_token_minutes: int = 15
     refresh_token_days: int = 14
+    booking_hold_minutes: int = Field(default=20, ge=5, le=60)
     cors_origins: str = "http://localhost:3000"
     payment_provider: str = "sandbox"
     payment_api_key: str = ""

@@ -13,6 +13,7 @@ export type PricingPackage = {
   id: string;
   operator_id: string;
   name: string;
+  service_type: string;
   duration_minutes: number;
   included_km: string;
   base_price: string;
@@ -48,9 +49,10 @@ export async function searchVehicles(params: {
 }
 
 export async function getVehiclePackages(
-  vehicleId: string
+  vehicleId: string,
+  serviceType: string
 ): Promise<PricingPackage[]> {
-  const response = await fetch(`${API_URL}/vehicles/${vehicleId}/packages`, {
+  const response = await fetch(`${API_URL}/vehicles/${vehicleId}/packages?service_type=${encodeURIComponent(serviceType)}`, {
     cache: "no-store"
   });
   if (!response.ok) {
