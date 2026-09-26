@@ -51,6 +51,18 @@ services:
     volumes:
       - ./services/api:/app
 
+  scheduler:
+    build: ./services/api
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "--loglevel=INFO", "--schedule", "/tmp/pyro-celerybeat-schedule"]
+    volumes:
+      - ./services/api:/app
+
   web:
     build: ./apps/web
     environment:

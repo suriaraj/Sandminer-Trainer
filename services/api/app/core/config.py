@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     payment_provider: str = "sandbox"
     payment_api_key: str = ""
     payment_secret: str = ""
+    storage_bucket: str = ""
+    storage_region: str = "us-east-1"
+    storage_endpoint: str = ""
+    storage_public_endpoint: str = ""
+    storage_access_key: str = ""
+    storage_secret_key: str = ""
 
     @field_validator("app_env")
     @classmethod
@@ -36,6 +42,8 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 
     def validate_runtime_safety(self) -> None:
+        if self.app_env == "production" and self.storage_public_endpoint and not self.storage_public_endpoint.startswith("https://"):
+            raise RuntimeError("Public document storage must use HTTPS in production")
         if self.app_env == "production" and self.payment_provider == "sandbox":
             raise RuntimeError("PAYMENT_PROVIDER=sandbox is forbidden in production")
         if self.app_env == "production" and "localhost" in self.database_url:

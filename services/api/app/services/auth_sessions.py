@@ -44,7 +44,9 @@ def issue_session(
 
 def rotate_session(db: Session, refresh_token: str) -> tuple[str, str, AuthSession]:
     user_id, session_id = decode_refresh_token(refresh_token)
-    session = db.get(AuthSession, session_id)
+    session = db.scalar(
+        select(AuthSession).where(AuthSession.id == session_id).with_for_update()
+    )
     now = datetime.now(UTC)
     if (
         session is None

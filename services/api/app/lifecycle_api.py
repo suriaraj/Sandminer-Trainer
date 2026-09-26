@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -15,6 +16,7 @@ from app.lifecycle_models import (
     HandoverRecord,
     InspectionRecord,
     KycCase,
+    KycDocument,
     Review,
     SupportTicket,
 )
@@ -38,15 +40,18 @@ from app.lifecycle_schemas import (
     SupportTicketResponse,
 )
 from app.models import (
+    Booking,
     BookingStatus,
     Payment,
     PaymentEvent,
     PaymentStatus,
+    OutboxEvent,
     User,
 )
 from app.providers.payment import payment_provider
 from app.services.audit import append_audit
 from app.services.idempotency import begin_idempotent
+from app.marketplace_models import RentalConfiguration
 from app.services.lifecycle import (
     get_customer_booking,
     get_operator_booking,
@@ -119,9 +124,20 @@ def review_kyc(
     reviewer: User = Depends(require_permissions("kyc:approve")),
     db: Session = Depends(get_db),
 ) -> KycCaseResponse:
-    case = db.get(KycCase, case_id)
+    case = db.get(KycCase, case_id, with_for_update=True)
     if case is None:
         raise NotFoundError("KYC case not found")
+    if payload.decision == "VERIFIED":
+        required_type = "DRIVING_LICENSE" if case.service_type == "SELF_DRIVE" else "IDENTITY_PROOF"
+        evidence = db.scalar(select(KycDocument.id).where(
+            KycDocument.kyc_case_id == case.id,
+            KycDocument.document_type == required_type,
+            KycDocument.status == "VERIFIED",
+        ).limit(1))
+        if case.status not in {"SUBMITTED", "UNDER_REVIEW"} or evidence is None:
+            raise ConflictError("KYC_EVIDENCE_REQUIRED", "Verified service-specific documents are required")
+        if payload.expires_at is None or payload.expires_at <= datetime.now(UTC):
+            raise ConflictError("KYC_EXPIRY_REQUIRED", "KYC approval must have a future expiry")
     before = {"status": case.status, "reason": case.reason}
     case.status = payload.decision
     case.reason = payload.reason
@@ -139,6 +155,32 @@ def review_kyc(
         before_state=before,
         after_state={"status": case.status, "reason": case.reason},
     )
+    if case.status == "VERIFIED":
+        pending = db.scalars(select(Booking).where(
+            Booking.customer_id == case.customer_id,
+            Booking.status == BookingStatus.KYC_PENDING,
+        ).with_for_update()).all()
+        for booking in pending:
+            config = db.scalar(select(RentalConfiguration).where(
+                RentalConfiguration.quote_id == booking.quote_id,
+            ))
+            if config is None or config.service_type != case.service_type:
+                continue
+            captured = db.scalar(select(Payment.id).where(
+                Payment.booking_id == booking.id,
+                Payment.status == PaymentStatus.CAPTURED,
+            ).limit(1))
+            if captured is not None:
+                transition_booking(
+                    db, booking, BookingStatus.CONFIRMED, reviewer.id,
+                    getattr(request.state, "request_id", None),
+                )
+                db.add(OutboxEvent(
+                    id=uuid4(), topic="booking.confirmed",
+                    aggregate_id=str(booking.id),
+                    payload={"booking_id": str(booking.id)},
+                    created_at=datetime.now(UTC),
+                ))
     db.commit()
     return kyc_response(case)
 
@@ -156,7 +198,11 @@ def initiate_payment(
     db: Session = Depends(get_db),
 ) -> PaymentInitiateResponse:
     try:
-        booking = get_customer_booking(db, booking_id, user.id)
+        booking = db.get(Booking, booking_id, with_for_update=True)
+        if booking is None or booking.customer_id != user.id:
+            raise NotFoundError("Booking not found")
+        if booking.payment_deadline_at is not None and booking.payment_deadline_at <= datetime.now(UTC):
+            raise ConflictError("BOOKING_HOLD_EXPIRED", "Booking hold expired; request a fresh quote")
         if booking.status != BookingStatus.PAYMENT_PENDING:
             raise ConflictError(
                 "BOOKING_NOT_PAYMENT_PENDING",
